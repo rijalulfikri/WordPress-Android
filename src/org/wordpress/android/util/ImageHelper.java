@@ -10,6 +10,7 @@ import android.graphics.Matrix;
 import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Environment;
 import android.provider.MediaStore;
 import android.provider.MediaStore.Images;
 import android.text.TextUtils;
@@ -23,15 +24,21 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.wordpress.android.util.AppLog.T;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 
 public class ImageHelper {
-
     public static int[] getImageSize(Uri uri, Context context){
         String path = null;
         BitmapFactory.Options options = new BitmapFactory.Options();
@@ -151,20 +158,20 @@ public class ImageHelper {
         }
         return null;
     }
-    
+
     /** From http://developer.android.com/training/displaying-bitmaps/load-bitmap.html **/
     public static int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
         // Raw height and width of image
         final int height = options.outHeight;
         final int width = options.outWidth;
         int inSampleSize = 1;
-    
+
         if (height > reqHeight || width > reqWidth) {
-    
+
             // Calculate ratios of height and width to requested height and width
             final int heightRatio = Math.round((float) height / (float) reqHeight);
             final int widthRatio = Math.round((float) width / (float) reqWidth);
-    
+
             // Choose the smallest ratio as inSampleSize value, this will guarantee
             // a final image with both dimensions larger than or equal to the
             // requested height and width.
@@ -176,16 +183,16 @@ public class ImageHelper {
 
 
     public interface BitmapWorkerCallback {
-        public void onBitmapReady(String filePath, ImageView imageView, Bitmap bitmap); 
+        public void onBitmapReady(String filePath, ImageView imageView, Bitmap bitmap);
     }
-    
+
     public static class BitmapWorkerTask extends AsyncTask<String, Void, Bitmap> {
         private final WeakReference<ImageView> imageViewReference;
         private final BitmapWorkerCallback callback;
         private int targetWidth;
         private int targetHeight;
         private String path;
-        
+
         public BitmapWorkerTask(ImageView imageView, int width, int height, BitmapWorkerCallback callback) {
             // Use a WeakReference to ensure the ImageView can be garbage collected
             imageViewReference = new WeakReference<ImageView>(imageView);
@@ -198,14 +205,14 @@ public class ImageHelper {
         @Override
         protected Bitmap doInBackground(String... params) {
             path = params[0];
-            
+
             BitmapFactory.Options bfo = new BitmapFactory.Options();
             bfo.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(path, bfo);
-            
+
             bfo.inSampleSize = calculateInSampleSize(bfo, targetWidth, targetHeight);
             bfo.inJustDecodeBounds = false;
-            
+
             // get proper rotation
             try {
                 File f = new File(path);
@@ -218,11 +225,9 @@ public class ImageHelper {
                     return BitmapFactory.decodeFile(path, bfo);
                 } else if (orientation == ExifInterface.ORIENTATION_ROTATE_90) {
                     angle = 90;
-                } 
-                else if (orientation == ExifInterface.ORIENTATION_ROTATE_180) {
+                } else if (orientation == ExifInterface.ORIENTATION_ROTATE_180) {
                     angle = 180;
-                } 
-                else if (orientation == ExifInterface.ORIENTATION_ROTATE_270) {
+                } else if (orientation == ExifInterface.ORIENTATION_ROTATE_270) {
                     angle = 270;
                 }
 
@@ -230,29 +235,29 @@ public class ImageHelper {
                 mat.postRotate(angle);
 
                 Bitmap bmp = BitmapFactory.decodeStream(new FileInputStream(f), null, bfo);
-                return Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), mat, true);                 
+                return Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), mat, true);
             }
             catch (IOException e) {
                 AppLog.e(T.UTILS, "Error in setting image", e);
-            }   
+            }
             catch(OutOfMemoryError oom) {
                 AppLog.e(T.UTILS, "OutOfMemoryError Error in setting image: " + oom);
             }
-            
+
             return null;
         }
 
         // Once complete, see if ImageView is still around and set bitmap.
         @Override
         protected void onPostExecute(Bitmap bitmap) {
-            if (imageViewReference == null || bitmap == null) 
+            if (imageViewReference == null || bitmap == null)
                 return;
 
             final ImageView imageView = imageViewReference.get();
-            
-            if (callback != null) 
+
+            if (callback != null)
                 callback.onBitmapReady(path, imageView, bitmap);
-            
+
         }
     }
 
@@ -273,7 +278,7 @@ public class ImageHelper {
             return "Video";
         } else {
             String[] projection = new String[] { Images.Thumbnails.DATA };
-            
+
             Cursor cur;
             try {
                 cur = ctx.getContentResolver().query(curStream, projection, null, null, null);
@@ -301,7 +306,7 @@ public class ImageHelper {
             return title;
         }
     }
-    
+
     /**
      * Resizes an image to be placed in the Post Content Editor
      * @param ctx
@@ -311,7 +316,7 @@ public class ImageHelper {
     public Bitmap getThumbnailForWPImageSpan(Context ctx, String filePath) {
         if (filePath==null)
             return null;
-        
+
         Display display = ((Activity)ctx).getWindowManager().getDefaultDisplay();
         int width = display.getWidth();
         int height = display.getHeight();
@@ -319,12 +324,12 @@ public class ImageHelper {
             width = height;
 
         Uri curUri;
-        
+
         if (!filePath.contains("content://"))
             curUri = Uri.parse("content://media" + filePath);
         else
             curUri = Uri.parse(filePath);
-        
+
         if (filePath.contains("video")) {
             int videoId = 0;
             try {
@@ -355,12 +360,11 @@ public class ImageHelper {
             }
         }
     }
-    
+
     public Bitmap getThumbnailForWPImageSpan(Bitmap largeBitmap, int resizeWidth) {
-        
         if (largeBitmap.getWidth() < resizeWidth)
             return largeBitmap; //Do not resize.
-        
+
         float percentage = (float) resizeWidth / largeBitmap.getWidth();
         float proportionateHeight = largeBitmap.getHeight() * percentage;
         int resizeHeight = (int) Math.rint(proportionateHeight);
@@ -369,21 +373,131 @@ public class ImageHelper {
     }
 
     /**
-     * nbradbury - 21-Feb-2014 - similar to createThumbnail but more efficient since it doesn't
-     * require passing the full-size image as an array of bytes[]
+     * Buffered write of a bitmap as a int packed pixels array
+     *
+     * @param source Bitmap
+     * @return temporary file
      */
-    public byte[] createThumbnailFromUri(Context context,
-            Uri imageUri,
-            int maxWidth,
-            String fileExtension,
-            int rotation) {
-
-        if (context == null || imageUri == null)
+    public File bitmap2PixelArrayFile(Bitmap source) {
+        File tmpFile;
+        int sHeight = source.getHeight();
+        int sWidth = source.getWidth();
+        try {
+            tmpFile = File.createTempFile("wp-tmp-pixel-data", ".data");
+            DataOutputStream outputStream = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(
+                    tmpFile)));
+            for (int y = 0; y < sHeight; ++y) {
+                for (int x = 0; x < sWidth; ++x) {
+                    outputStream.writeInt(source.getPixel(x, y));
+                }
+            }
+            outputStream.flush();
+            outputStream.close();
+            return tmpFile;
+        } catch (FileNotFoundException e) {
             return null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private Bitmap rotatePixelArray(File pixelArray, Bitmap source, int angle) {
+        int sHeight = source.getHeight();
+        int sWidth = source.getWidth();
+        int height = sHeight;
+        int width = sWidth;
+        switch (angle) {
+            case 90:
+            case 270:
+                height = sWidth;
+                width = sHeight;
+                break;
+            case 180:
+                break;
+            default:
+                AppLog.e(T.UTILS, "rotatePixelArray - Unsupported angle: " + angle);
+                return null;
+        }
+        int x1 = 0, y1 = 0;
+        try {
+            Bitmap output = Bitmap.createBitmap(width, height, source.getConfig());
+            final DataInputStream inputStream = new DataInputStream(new BufferedInputStream(new FileInputStream(
+                    pixelArray)));
+
+            for (int y = 0; y < sHeight; ++y) {
+                for (int x = 0; x < sWidth; ++x) {
+                    x1 = x;
+                    y1 = y;
+                    int pixel = inputStream.readInt();
+                    switch (angle) {
+                        case 90:
+                            output.setPixel(sHeight - 1 - y, sWidth - 1 - x, pixel);
+                            break;
+                        case 180:
+                            output.setPixel(sWidth - 1 - x, sHeight - 1 - y, pixel);
+                            break;
+                        case 270:
+                            output.setPixel(y, sWidth - 1 - x, pixel);
+                            break;
+                    }
+                }
+            }
+            inputStream.close();
+            return output;
+        } catch (IOException e) {
+            e.printStackTrace();
+            AppLog.e(T.UTILS, x1 + " - " + y1);
+            return null;
+        }
+    }
+
+    /**
+     * Rotate a bitmap on disk
+     *
+     * @param source bitmap source
+     * @param angle clockwise angle in degrees - only 90, 180, 270 supported
+     */
+    public Bitmap rotateBitmapOnDisk(Bitmap source, int angle) {
+        if (angle == 0) {
+            return source;
+        }
+        // Write the bitmap in a pixel array file
+        File pixelArray = bitmap2PixelArrayFile(source);
+        if (pixelArray == null) {
+            return null;
+        }
+
+        Bitmap output = rotatePixelArray(pixelArray, source, angle);
+        pixelArray.delete();
+        if (output == null) {
+            return null;
+        }
+        return output;
+    }
+
+    /**
+     * TODO: remove this method, only used for testing
+     * TODO: saveBitmapToDisk("wp-test-" + angle + ".png", output);
+     */
+    private void saveBitmapToDisk(String filename, Bitmap bitmap) {
+        try {
+            String path = Environment.getExternalStorageDirectory().toString();
+            File file = new File(path, filename);
+            OutputStream fOut = new FileOutputStream(file);
+            bitmap.compress(Bitmap.CompressFormat.PNG, 90, fOut);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String getFilePathFromUri(Context context, Uri imageUri) {
+        if (context == null || imageUri == null) {
+            return null;
+        }
 
         String filePath = null;
         if (imageUri.toString().contains("content:")) {
-            String[] projection = new String[] { Images.Media.DATA };
+            String[] projection = new String[]{Images.Media.DATA};
             Cursor cur = context.getContentResolver().query(imageUri, projection, null, null, null);
             if (cur != null) {
                 if (cur.moveToFirst()) {
@@ -399,7 +513,19 @@ public class ImageHelper {
             filePath = imageUri.toString().replace("content://media", "");
             filePath = filePath.replace("file://", "");
         }
+        return filePath;
+    }
 
+    /**
+     * nbradbury - 21-Feb-2014 - similar to createThumbnail but more efficient since it doesn't
+     * require passing the full-size image as an array of bytes[]
+     */
+    public byte[] createThumbnailFromUri(Context context, Uri imageUri, int maxWidth, String fileExtension,
+                                         int rotation) {
+        String filePath = getFilePathFromUri(context, imageUri);
+        if (filePath == null) {
+            return null;
+        }
         // get just the image bounds
         BitmapFactory.Options optBounds = new BitmapFactory.Options();
         optBounds.inJustDecodeBounds = true;
@@ -417,7 +543,7 @@ public class ImageHelper {
         BitmapFactory.Options optActual = new BitmapFactory.Options();
         optActual.inSampleSize = scale;
 
-        // Get the roughly resized bitmap
+        // Get the roughly resized bitmap - memory is allocated here
         Bitmap bmpResized = BitmapFactory.decodeFile(filePath, optActual);
         if (bmpResized == null)
             return null;
@@ -450,14 +576,24 @@ public class ImageHelper {
             fmt = Bitmap.CompressFormat.JPEG;
         }
 
-        final Bitmap bmpRotated;
+        Bitmap bmpRotated;
         try {
-            bmpRotated = Bitmap.createBitmap(bmpResized, 0, 0, bmpResized.getWidth(), bmpResized.getHeight(), matrix, true);
+            bmpRotated = Bitmap.createBitmap(bmpResized, 0, 0, bmpResized.getWidth(), bmpResized.getHeight(), matrix,
+                    true);
         } catch (OutOfMemoryError e) {
-            return null;
+            matrix = new Matrix();
+            matrix.postScale(scaleBy, scaleBy);
+            try {
+                Bitmap bmpFinalResized = Bitmap.createBitmap(bmpResized, 0, 0, bmpResized.getWidth(),
+                        bmpResized.getHeight(), matrix, true);
+                bmpRotated = rotateBitmapOnDisk(bmpFinalResized, 90);
+                bmpFinalResized.recycle();
+            } catch (OutOfMemoryError e2) {
+                return null;
+            }
         }
-        bmpRotated.compress(fmt, 100, stream);
         bmpResized.recycle();
+        bmpRotated.compress(fmt, 100, stream);
         bmpRotated.recycle();
 
         return stream.toByteArray();
