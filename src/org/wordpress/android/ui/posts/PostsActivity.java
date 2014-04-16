@@ -1,5 +1,6 @@
 package org.wordpress.android.ui.posts;
 
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.ProgressDialog;
@@ -34,6 +35,7 @@ import org.wordpress.android.ui.posts.ViewPostFragment.OnDetailPostActionListene
 import org.wordpress.android.util.AlertUtil;
 import org.wordpress.android.util.AppLog;
 import org.wordpress.android.util.AppLog.T;
+import org.wordpress.android.util.SysUtils;
 import org.wordpress.android.util.WPAlertDialogFragment.OnDialogConfirmListener;
 import org.wordpress.android.util.WPMeShortlinks;
 import org.wordpress.android.util.stats.AnalyticsTracker;
@@ -619,6 +621,7 @@ public class PostsActivity extends WPActionBarActivity
         mPostList.setRefreshing(refreshing);
     }
 
+    @SuppressLint("NewApi")
     private void refreshBlogContent() {
         ApiHelper.GenericCallback callback = new ApiHelper.GenericCallback() {
             @Override
@@ -643,9 +646,15 @@ public class PostsActivity extends WPActionBarActivity
             }
         };
 
-        new ApiHelper.RefreshBlogContentTask(this,
-                                             WordPress.getCurrentBlog(),
-                                             callback)
-                                             .execute(false);
+        ApiHelper.RefreshBlogContentTask refreshBlogContentTask = new ApiHelper.RefreshBlogContentTask(
+                this,
+                WordPress.getCurrentBlog(),
+                callback
+        );
+        if (!SysUtils.canUseExecuteOnExecutor()) {
+            refreshBlogContentTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, false);
+        } else {
+            refreshBlogContentTask.execute(false);
+        }
     }
 }
