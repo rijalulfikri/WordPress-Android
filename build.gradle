@@ -1,185 +1,210 @@
 buildscript {
+    ext.kotlinVersion = '1.3.61'
+    ext.kotlin_coroutines_version = '1.3.3'
+    ext.kotlin_ktx_version = '1.2.0'
+    ext.androidx_work_version = "2.0.1"
+    ext.navComponenVersion = '2.0.0'
+    ext.buildGutenbergMobileJSBundle = 1
+
     repositories {
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:0.9.+'
-    }
-}
-
-repositories {
-    mavenCentral()
-    maven { url 'http://wordpress-mobile.github.io/WordPress-Android' }
-}
-
-apply plugin: 'android'
-
-android {
-    lintOptions {
-        quiet true
-        abortOnError false
-    }
-
-    packagingOptions {
-        exclude "META-INF/LICENSE.txt"
-        exclude "META-INF/NOTICE.txt"
-    }
-
-    buildTypes {
-        release {
-            buildConfigField "String", "APP_PN_KEY", "\"org.wordpress.android.playstore\""
-            buildConfigField "String", "STATS_PROVIDER_AUTHORITY", "\"org.wordpress.android.providers.StatsContentProvider\""
-        }
-        debug {
-            buildConfigField "String", "APP_PN_KEY", "\"org.wordpress.android.debug.build\""
-            buildConfigField "String", "STATS_PROVIDER_AUTHORITY", "\"org.wordpress.android.providers.StatsContentProvider\""
-        }
-        zbetagroup {
-            buildConfigField "String", "APP_PN_KEY", "\"org.wordpress.android.beta.build\""
-            buildConfigField "String", "STATS_PROVIDER_AUTHORITY", "\"org.wordpress.android.providers.StatsContentProviderBeta\""
-            packageNameSuffix ".beta"
-        }
-    }
-
-    compileSdkVersion 19
-    buildToolsVersion "19.0.1"
-
-    defaultConfig {
-        packageName "org.wordpress.android"
-        versionName "2.7.3"
-        versionCode 105
-        minSdkVersion 9
-        targetSdkVersion 19
+        google()
+        jcenter()
     }
 
     dependencies {
-        // Provided by maven central
-        compile 'com.google.code.gson:gson:2.2.2'
-        compile 'org.ccil.cowan.tagsoup:tagsoup:1.2.1'
-        compile 'com.android.support:support-v4:19.0.+'
-        compile 'com.github.castorflex.smoothprogressbar:library:0.4.0'
-
-        androidTestCompile 'com.jayway.android.robotium:robotium-solo:5.+'
-        androidTestCompile 'com.google.dexmaker:dexmaker-mockito:1.0'
-        androidTestCompile 'org.objenesis:objenesis:2.1'
-        androidTestCompile 'org.mockito:mockito-core:+'
-
-        // These are provided by the WordPress-Android Repository
-        compile 'org.wordpress:actionbarsherlock:4.4.0'
-        compile 'org.wordpress:menudrawer:3.0.5-SNAPSHOT'
-        compile 'org.wordpress:gcm:1.0.0'
-        compile 'org.wordpress:volley:wp-0.0.1'
-        compile 'com.automattic:wordpresscom-rest:0.0.3'
-        compile 'org.wordpress:httpmime:4.1.2'
-        compile 'org.wordpress:graphview:3.1.1'
-        compile 'org.wordpress:drag-sort-listview:0.6.1'
-        compile 'org.wordpress:slidinguppanel:1.0.0'
-        compile 'org.wordpress:android-passcodelock:0.0.5'
-        compile 'org.wordpress:commons-lang:2.6'
-        compile 'org.wordpress:pulltorefresh-main:+'
-        compile 'org.wordpress:pulltorefresh-abs:+'
-        releaseCompile 'org.wordpress:emailchecker:0.2'
-        debugCompile 'org.wordpress:emailchecker-debug:0.2'
-        zbetagroupCompile 'org.wordpress:emailchecker:0.2'
-
-        // Local dependencies
-        compile files('libs/MixpanelAPI.jar')
+        classpath 'com.android.tools.build:gradle:3.5.1'
+        classpath 'com.automattic.android:fetchstyle:1.1'
+        classpath "org.jetbrains.kotlin:kotlin-allopen:$kotlinVersion"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
+        classpath "androidx.navigation:navigation-safe-args-gradle-plugin:$navComponenVersion"
     }
+}
 
-    sourceSets {
-        main {
-            manifest.srcFile 'AndroidManifest.xml'
-            java.srcDirs = ['src']
-            res.srcDirs = ['res']
-            assets.srcDirs = ['assets']
-        }
+plugins {
+    id 'com.gradle.build-scan' version '2.0.2'
+}
 
-        release {
-            manifest.srcFile 'AndroidManifestReleaseAndDebug.xml'
-        }
+ext {
+    buildGutenbergMobileJSBundle = 1
+}
 
-        debug {
-            manifest.srcFile 'AndroidManifestReleaseAndDebug.xml'
-        }
+apply plugin: 'com.automattic.android.fetchstyle'
 
-        zbetagroup {
-            res.srcDirs = ['res-zbetagroup']
-            manifest.srcFile 'AndroidManifestBetagroup.xml'
-        }
+project.ext.buildGutenbergFromSource = project.properties.getOrDefault('wp.BUILD_GUTENBERG_FROM_SOURCE', false).toBoolean()
+def suppressJSBundle =  System.getenv('SUPPRESS_GUTENBERG_MOBILE_JS_BUNDLE_BUILD').asBoolean()
+project.ext.buildGutenbergMobileJSBundle = !(suppressJSBundle || project.ext.buildGutenbergFromSource)
 
-        androidTest.setRoot('tests')
+if (project.ext.buildGutenbergFromSource) {
+    def nodeModulesDir = new File('libs/gutenberg-mobile/node_modules')
+    if (!nodeModulesDir.exists()) {
+        def message = "Attempting to build Gutenberg from source without a libs/gutenberg-mobile/node_modules directory. \
+Either run `npm install` manually within libs/gutenberg-mobile or disable building Gutenberg from source by \
+setting wp.BUILD_GUTENBERG_FROM_SOURCE to false."
+        throw new GradleException(message)
     }
+}
 
-} // end android
+allprojects {
+    apply plugin: 'checkstyle'
 
-// Generates the Config.java class using properties defined in gradle.properties
-// or by other means provided by Gradle
-task generateWPConfig(group: "generate", description: "Generate Config class") {
-    def dir = "${buildDir}/source/wordpress"
-    def file = new File(dir, "org/wordpress/android/Config.java")
-    android {
-        sourceSets {
-            main {
-                java {
-                    srcDir dir
-                }
+    repositories {
+        google()
+        jcenter()
+        maven { url "https://dl.bintray.com/wordpress-mobile/maven" }
+        maven { url "https://jitpack.io" }
+
+        if (rootProject.ext.buildGutenbergFromSource) {
+            // nested RN libraries need the RN maven repo defined from outside so, do it here when building from source
+
+            maven {
+                // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
+                url "$rootDir/libs/gutenberg-mobile/gutenberg/node_modules/react-native/android"
             }
+        } else {
+            maven { url "https://dl.bintray.com/wordpress-mobile/react-native-mirror/" }
         }
     }
-    outputs.file file
+
+    task checkstyle(type: Checkstyle) {
+        source 'src'
+
+        classpath = files()
+    }
+
+    checkstyle {
+        toolVersion = '8.3'
+        configFile file("${project.rootDir}/config/checkstyle.xml")
+    }
+}
+
+subprojects {
+
+    configurations {
+        ktlint
+    }
+
+    dependencies {
+        ktlint 'com.github.shyiko:ktlint:0.29.0'
+    }
+
+    task ktlint(type: JavaExec) {
+        main = "com.github.shyiko.ktlint.Main"
+        classpath = configurations.ktlint
+        args "src/**/*.kt"
+    }
+
+    task ktlintFormat(type: JavaExec) {
+        main = "com.github.shyiko.ktlint.Main"
+        classpath = configurations.ktlint
+        args "-F", "src/**/*.kt"
+    }
+
+    task ciktlint(type: JavaExec) {
+        main = "com.github.shyiko.ktlint.Main"
+        classpath = configurations.ktlint
+        args "src/**/*.kt", "--reporter=checkstyle,output=${buildDir}/ktlint.xml"
+    }
+}
+
+buildScan {
+    // Always run Gradle scan on CI builds
+    if (System.getenv('CI')) {
+        termsOfServiceUrl = 'https://gradle.com/terms-of-service'
+        termsOfServiceAgree = 'yes'
+        tag 'CI'
+        publishAlways()
+    }
+}
+
+ext {
+    compileSdkVersion = 28
+    buildToolVersion = '28.0.3'
+
+    minSdkVersion = 21
+    targetSdkVersion = 28
+
+    coroutinesVersion = '1.3.3'
+    androidxWorkVersion = "2.0.1"
+
+    daggerVersion = '2.22.1'
+    fluxCVersion = '1.6.16'
+
+    appCompatVersion = '1.0.2'
+    constraintLayoutVersion = '1.1.3'
+    materialVersion = '1.1.0'
+    uCropVersion = '2.2.4'
+    lifecycleVersion = '2.2.0'
+
+    // testing
+    jUnitVersion = '4.12'
+    androidxTestVersion = '1.1.0'
+    androidxArchCoreVersion = '2.0.0'
+    assertJVersion = '3.11.1'
+    espressoVersion = '3.1.0'
+    mockitoCoreVersion = "2.28.2"
+    nhaarmanMockitoVersion = "2.1.0"
+}
+
+// Onboarding and dev env setup tasks
+task checkBundler(type:Exec) {
+    doFirst {
+        println "Check Bundler"
+    }
+
+    workingDir = './'
+    executable "sh"
+    args "-c", "if ! type 'bundle' > /dev/null; then gem install bundler; fi"
+
+    //store the output instead of printing to the console:
+    standardOutput = new ByteArrayOutputStream()
+
+    //extension method checkBundler.output() can be used to obtain the output:
+    ext.output = {
+        return standardOutput.toString()
+    }
+}
+
+task checkBundle(type:Exec, dependsOn:checkBundler) {
+    doFirst {
+        println "Check Bundle"
+    }
+
+    workingDir = './'
+    executable "sh"
+    args "-c", "bundle check --path=\${BUNDLE_PATH:-vendor/bundle} > /dev/null || bundle install --jobs=3 --retry=3 --path=\${BUNDLE_PATH:-vendor/bundle}"
+
+    //store the output instead of printing to the console:
+    standardOutput = new ByteArrayOutputStream()
+
+    //extension method checkBundle.output() can be used to obtain the output:
+    ext.output = {
+        return standardOutput.toString()
+    }
+}
+
+task applyCredentials(type:Exec, dependsOn:checkBundle) {
+    doFirst {
+        println "Apply credentials for this branch"
+    }
+
+    workingDir = './'
+    executable "sh"
+    args "-c", "FASTLANE_SKIP_UPDATE_CHECK=1 FASTLANE_ENV_PRINTER=1 bundle exec fastlane run configure_apply force:true"
+
+    //store the output instead of printing to the console:
+    standardOutput = new ByteArrayOutputStream()
+
+    //extension method checkBundle.output() can be used to obtain the output:
+    ext.output = {
+        return standardOutput.toString()
+    }
+}
+
+tasks.register("prodDeps") {
+    group = 'Onboarding'
+    description = 'Install dependencies for production builds'
+    dependsOn applyCredentials
     doLast {
-        file.getParentFile().mkdirs()
-        def properties = new Properties()
-        new File("${rootDir}/local.properties").withInputStream { stream ->
-            properties.load(stream)
-        }
-        def constants = [:]
-        properties.propertyNames().each { property ->
-            def keys = property.tokenize('.')
-            if (keys[0] == 'wp') {
-                def name = property.tokenize('.')[1..-1].collect { key -> key.toUpperCase() }.join('_')
-                constants[name] = properties.getProperty(property)
-            }
-        }
-        def writer = new FileWriter(file)
-        def config = constants.inject("") { consts, name, val ->
-            consts + "   public static final String ${name} = \"${val}\";\n"
-        }
-        writer.write("""/* auto-generated file do not modify */
-package org.wordpress.android;
-
-public final class Config {
-
-${config}
-}
-""")
-        writer.close()
+        println("Done")
     }
-}
-
-// Add the generateWPConfig task to every flavor's compile tasks
-android.buildTypes.all { buildType ->
-    def name = "generate${buildType.name.capitalize()}BuildConfig"
-    tasks.whenTaskAdded { task ->
-        if (task.name == name) {
-            task.dependsOn(generateWPConfig)
-            task.mustRunAfter(generateWPConfig)
-        }
-    }
-}
-
-// For app signing
-if (["storeFile", "storePassword", "keyAlias", "keyPassword"].count { !project.hasProperty(it) } == 0) {
-    android {
-        signingConfigs {
-            release {
-                storeFile = file(project.storeFile)
-                storePassword = project.storePassword
-                keyAlias = project.keyAlias
-                keyPassword = project.keyPassword
-            }
-        }
-    }
-    android.buildTypes.release.signingConfig = android.signingConfigs.release
-    android.buildTypes.zbetagroup.signingConfig = android.signingConfigs.release
 }
